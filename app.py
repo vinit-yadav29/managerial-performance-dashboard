@@ -1,5 +1,5 @@
 # =========================================
-# FINAL MANAGERIAL DASHBOARD (FULL)
+# MANAGERIAL PERFORMANCE DASHBOARD
 # =========================================
 
 import streamlit as st
@@ -7,25 +7,19 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-# -----------------------------
-# PAGE CONFIG
-# -----------------------------
 st.set_page_config(page_title="Manager Dashboard", layout="wide")
 
-# -----------------------------
-# CUSTOM DARK UI
-# -----------------------------
+# =========================================
+# THEME
+# =========================================
 st.markdown("""
 <style>
-body {
-    background-color: #0E1117;
-    color: white;
-}
+body {background-color: #0E1117; color: white;}
 .card {
     background-color: #161B22;
     padding: 20px;
     border-radius: 12px;
-    margin-bottom: 10px;
+    text-align: center;
 }
 .metric {
     font-size: 28px;
@@ -39,27 +33,30 @@ body {
 </style>
 """, unsafe_allow_html=True)
 
-# -----------------------------
+# =========================================
 # LOAD DATA
-# -----------------------------
+# =========================================
 df = pd.read_csv("data/processed/MPIA_EDA_READY.csv")
 
-# Clean attrition (important)
-df['attrition'] = df['attrition'].str.lower()
+df['manager_name'] = df['manager_name'].astype(str).str.strip()
+df['department'] = df['department'].astype(str).str.strip()
+df['attrition'] = df['attrition'].astype(str).str.lower()
 
-# -----------------------------
-# SIDEBAR FILTERS
-# -----------------------------
+# =========================================
+# FILTERS
+# =========================================
 st.sidebar.title("Filters")
 
 manager = st.sidebar.selectbox(
     "Select Manager",
-    df['manager_name'].unique()
+    sorted(df['manager_name'].dropna().unique())
 )
+
+filtered_departments = df[df['manager_name'] == manager]['department']
 
 department = st.sidebar.selectbox(
     "Select Department",
-    df['department'].unique()
+    sorted(filtered_departments.dropna().unique())
 )
 
 filtered_df = df[
@@ -67,254 +64,154 @@ filtered_df = df[
     (df['department'] == department)
 ]
 
-# -----------------------------
+if filtered_df.empty:
+    st.warning("No data available")
+    st.stop()
+
+# =========================================
 # TITLE
-# -----------------------------
+# =========================================
 st.title("Managerial Performance Dashboard")
 
-# -----------------------------
-# KPI CALCULATIONS
-# -----------------------------
-avg_perf = filtered_df['employee_performance'].mean()
-avg_sat = filtered_df['satisfaction_score'].mean()
-revenue = filtered_df['revenue_generated'].sum()
+# =========================================
+# KPI
+# =========================================
+def safe_mean(series):
+    return round(series.mean(), 2) if not series.empty else 0
 
-attrition_rate = (filtered_df['attrition'] == 'yes').mean() * 100
+avg_perf = safe_mean(filtered_df['employee_performance'])
+avg_sat = safe_mean(filtered_df['satisfaction_score'])
+revenue = int(filtered_df['revenue_generated'].sum())
+attrition_rate = round((filtered_df['attrition'] == 'yes').mean() * 100, 2)
 
-# -----------------------------
-# KPI CARDS
-# -----------------------------
 col1, col2, col3, col4 = st.columns(4)
 
-with col1:
-    st.markdown(f"""
+def kpi(title, value):
+    return f"""
     <div class="card">
-        <div class="label">Avg Performance</div>
-        <div class="metric">{round(avg_perf,2)}</div>
+        <div class="label">{title}</div>
+        <div class="metric">{value}</div>
     </div>
-    """, unsafe_allow_html=True)
+    """
 
-with col2:
-    st.markdown(f"""
-    <div class="card">
-        <div class="label">Avg Satisfaction</div>
-        <div class="metric">{round(avg_sat,2)}</div>
-    </div>
-    """, unsafe_allow_html=True)
+col1.markdown(kpi("Avg Performance", avg_perf), unsafe_allow_html=True)
+col2.markdown(kpi("Avg Satisfaction", avg_sat), unsafe_allow_html=True)
+col3.markdown(kpi("Revenue", revenue), unsafe_allow_html=True)
+col4.markdown(kpi("Attrition %", f"{attrition_rate}%"), unsafe_allow_html=True)
 
-with col3:
-    st.markdown(f"""
-    <div class="card">
-        <div class="label">Revenue</div>
-        <div class="metric">{int(revenue)}</div>
-    </div>
-    """, unsafe_allow_html=True)
+# =========================================
+# INSIGHTS
+# =========================================
+st.subheader("Key Business Insights")
 
-with col4:
-    st.markdown(f"""
-    <div class="card">
-        <div class="label">Attrition Rate</div>
-        <div class="metric">{round(attrition_rate,2)}%</div>
-    </div>
-    """, unsafe_allow_html=True)
+best_manager = df.groupby('manager_name')['employee_performance'].mean().idxmax()
+worst_manager = df.groupby('manager_name')['employee_performance'].mean().idxmin()
+top_revenue_manager = df.groupby('manager_name')['revenue_generated'].sum().idxmax()
 
-# -----------------------------
-# CHARTS
-# -----------------------------
+st.markdown(f"""
+✔ Best Performing Manager: **{best_manager}**  
+✔ Lowest Performing Manager: **{worst_manager}**  
+✔ Highest Revenue Generator: **{top_revenue_manager}**  
+✔ Current Attrition Risk: **{attrition_rate}%**
+""")
+
+# =========================================
+# ROW 1
+# =========================================
 col5, col6 = st.columns(2)
 
-# Manager Performance (Improved)
 with col5:
     st.subheader("Performance by Manager")
-
-    # Prepare data (sorted)
-    manager_perf = (
-        df.groupby('manager_name')['employee_performance']
-        .mean()
-        .sort_values(ascending=False)
-    )
-
-    fig, ax = plt.subplots(figsize=(7,4))
-
-    # Barplot
-    bars = ax.bar(
-        manager_perf.index,
-        manager_perf.values,
-        color="#00FFAA",
-        edgecolor="white"
-    )
-
-    # Background styling
+    perf = df.groupby('manager_name')['employee_performance'].mean().sort_values()
+    fig, ax = plt.subplots()
+    perf.plot(kind='barh', color="#00FFAA", ax=ax)
     ax.set_facecolor('#161B22')
     fig.patch.set_facecolor('#0E1117')
-
-    # Labels
-    ax.set_title("Average Employee Performance", color="white", fontsize=12)
-    ax.set_xlabel("Manager", color="white")
-    ax.set_ylabel("Performance Score", color="white")
-
-    # Rotate x labels
-    plt.xticks(rotation=30, ha='right', color="white")
-    plt.yticks(color="white")
-
-    # Add value labels on bars
-    for bar in bars:
-        height = bar.get_height()
-        ax.text(
-            bar.get_x() + bar.get_width()/2,
-            height + 0.05,
-            f"{round(height,2)}",
-            ha='center',
-            color='white',
-            fontsize=9
-        )
-
-    # Remove top/right borders
-    ax.spines['top'].set_visible(False)
-    ax.spines['right'].set_visible(False)
-
+    ax.tick_params(colors='white')
     st.pyplot(fig)
 
-# Revenue by Manager (Improved)
 with col6:
     st.subheader("Revenue by Manager")
-
-    # Prepare data (sorted)
-    manager_rev = (
-        df.groupby('manager_name')['revenue_generated']
-        .sum()
-        .sort_values(ascending=False)
-    )
-
-    fig2, ax2 = plt.subplots(figsize=(7,4))
-
-    # Bar chart
-    bars = ax2.bar(
-        manager_rev.index,
-        manager_rev.values,
-        color="#4CAF50",
-        edgecolor="white"
-    )
-
-    # Background styling
+    rev = df.groupby('manager_name')['revenue_generated'].sum().sort_values()
+    fig2, ax2 = plt.subplots()
+    rev.plot(kind='barh', color="#4CAF50", ax=ax2)
     ax2.set_facecolor('#161B22')
     fig2.patch.set_facecolor('#0E1117')
-
-    # Titles & labels
-    ax2.set_title("Total Revenue by Manager", color="white", fontsize=12)
-    ax2.set_xlabel("Manager", color="white")
-    ax2.set_ylabel("Revenue", color="white")
-
-    # Rotate labels
-    plt.xticks(rotation=30, ha='right', color="white")
-    plt.yticks(color="white")
-
-    # Add value labels
-    for bar in bars:
-        height = bar.get_height()
-        ax2.text(
-            bar.get_x() + bar.get_width()/2,
-            height,
-            f"{int(height)}",
-            ha='center',
-            va='bottom',
-            color='white',
-            fontsize=9
-        )
-
-    # Clean look
-    ax2.spines['top'].set_visible(False)
-    ax2.spines['right'].set_visible(False)
-
+    ax2.tick_params(colors='white')
     st.pyplot(fig2)
 
-# -----------------------------
-# SATISFACTION DISTRIBUTION (IMPROVED)
-# -----------------------------
-st.subheader("Satisfaction Score Distribution")
+# =========================================
+# ROW 2
+# =========================================
+col7, col8 = st.columns(2)
 
-fig3, ax3 = plt.subplots(figsize=(7,4))
+with col7:
+    st.subheader("😊 Satisfaction by Manager")
+    sat = df.groupby('manager_name')['satisfaction_score'].mean().sort_values()
+    fig5, ax5 = plt.subplots()
+    sat.plot(kind='barh', color="#00BFFF", ax=ax5)
+    ax5.set_facecolor('#161B22')
+    fig5.patch.set_facecolor('#0E1117')
+    ax5.tick_params(colors='white')
+    st.pyplot(fig5)
 
-# Histogram + KDE
-sns.histplot(
-    df['satisfaction_score'],
-    kde=True,
-    bins=20,
-    color="#00FFAA",
-    edgecolor="white",
-    ax=ax3
-)
+with col8:
+    st.subheader("⚠️ Attrition Rate by Manager")
+    attrition_df = df.copy()
+    attrition_df['attrition_flag'] = (attrition_df['attrition'] == 'yes').astype(int)
+    attrition_rate_mgr = attrition_df.groupby('manager_name')['attrition_flag'].mean().sort_values()
+    fig6, ax6 = plt.subplots()
+    attrition_rate_mgr.plot(kind='barh', color="#FF4C4C", ax=ax6)
+    ax6.set_facecolor('#161B22')
+    fig6.patch.set_facecolor('#0E1117')
+    ax6.tick_params(colors='white')
+    st.pyplot(fig6)
 
-# Background styling
-ax3.set_facecolor('#161B22')
-fig3.patch.set_facecolor('#0E1117')
+# =========================================
+# ROW 3
+# =========================================
+col9, col10 = st.columns(2)
 
-# Labels
-ax3.set_title("Distribution of Satisfaction Scores", color="white", fontsize=12)
-ax3.set_xlabel("Satisfaction Score", color="white")
-ax3.set_ylabel("Frequency", color="white")
+with col9:
+    st.subheader("🏢 Performance by Department")
+    dept_perf = df.groupby('department')['employee_performance'].mean().sort_values()
+    fig8, ax8 = plt.subplots()
+    dept_perf.plot(kind='bar', color="#9C27B0", ax=ax8)
+    ax8.set_facecolor('#161B22')
+    fig8.patch.set_facecolor('#0E1117')
+    ax8.tick_params(colors='white')
+    st.pyplot(fig8)
 
-# Tick colors
-ax3.tick_params(colors='white')
+with col10:
+    st.subheader("Satisfaction Distribution")
+    fig3, ax3 = plt.subplots()
+    sns.histplot(df['satisfaction_score'], kde=True, color="#00FFAA", ax=ax3)
+    ax3.set_facecolor('#161B22')
+    fig3.patch.set_facecolor('#0E1117')
+    ax3.tick_params(colors='white')
+    st.pyplot(fig3)
 
-# Mean line (VERY IMPORTANT 🔥)
-mean_val = df['satisfaction_score'].mean()
-ax3.axvline(mean_val, color='red', linestyle='--', linewidth=2)
+# =========================================
+# FULL WIDTH
+# =========================================
+st.subheader("Employee Performance vs Revenue")
 
-# Mean label
-ax3.text(
-    mean_val,
-    ax3.get_ylim()[1]*0.9,
-    f"Mean: {round(mean_val,2)}",
-    color='red',
-    ha='center'
-)
+fig4, ax4 = plt.subplots(figsize=(10,5))
+sns.scatterplot(data=df, x='employee_performance', y='revenue_generated', color="#00FFAA", ax=ax4)
+sns.regplot(data=df, x='employee_performance', y='revenue_generated', scatter=False, color="red", ax=ax4)
 
-# Clean look
-ax3.spines['top'].set_visible(False)
-ax3.spines['right'].set_visible(False)
-
-st.pyplot(fig3)
-
-# -----------------------------
-# CORRELATION HEATMAP (IMPROVED)
-# -----------------------------
-st.subheader("🔥 Correlation Heatmap")
-
-# Select numeric data
-corr = df.select_dtypes(include='number').corr()
-
-fig4, ax4 = plt.subplots(figsize=(10,6))
-
-# Heatmap
-sns.heatmap(
-    corr,
-    annot=True,              # show values
-    fmt=".2f",               # 2 decimal
-    cmap="coolwarm",
-    linewidths=0.5,
-    linecolor='black',
-    cbar=True,
-    ax=ax4
-)
-
-# Background styling
 ax4.set_facecolor('#161B22')
 fig4.patch.set_facecolor('#0E1117')
-
-# Title
-ax4.set_title("Feature Correlation Matrix", color="white", fontsize=12)
-
-# Tick styling
 ax4.tick_params(colors='white')
-plt.xticks(rotation=45, ha='right', color='white')
-plt.yticks(color='white')
 
 st.pyplot(fig4)
-# -----------------------------
-# TABLE
-# -----------------------------
-st.subheader("Filtered Data")
-st.dataframe(filtered_df)
 
-# test
+# =========================================
+# TABLES
+# =========================================
+st.subheader("🏆 Manager Ranking")
+ranking = df.groupby('manager_name')['employee_performance'].mean().sort_values(ascending=False)
+st.dataframe(ranking.reset_index().rename(columns={'employee_performance': 'Avg Performance'}))
+
+st.subheader("Filtered Data")
+st.dataframe(filtered_df.reset_index(drop=True))
