@@ -50,7 +50,7 @@ def ef():
 # ── Data ─────────────────────────────────────────────────────────────────────
 @st.cache_data
 def load_data():
-    df = pd.read_csv("C:/Users/ASUS/Downloads/HCL_Final/data/processed/MPIA_EDA_READY2.csv")
+    df = pd.read_csv("data/processed/MPIA_EDA_READY2.csv")
     df['manager_name'] = df['manager_name'].astype(str).str.strip().str.lower()
     df['department']   = df['department'].astype(str).str.strip().str.lower()
     df['attrition']    = df['attrition'].astype(str).str.lower()
