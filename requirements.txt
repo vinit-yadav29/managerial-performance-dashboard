@@ -3,9 +3,9 @@ numpy
 matplotlib
 seaborn
 scikit-learn
-jupyter
 ipykernel
 streamlit
 jupyter
 openpyxl
 plotly
+statsmodels
